@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:15
+    container_name: team9_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: t9pipe
+      POSTGRES_USER: jhu
+      POSTGRES_PASSWORD: jhu123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build: .
+    container_name: team9_app
+    depends_on:
+      - db
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: t9pipe
+      DB_USER: jhu
+      DB_PASSWORD: jhu123
+      EIA_API_KEY: ${EIA_API_KEY}
+      WEATHER_BASE_URL: ${WEATHER_BASE_URL}
+    ports:
+      - "8001:8001"
+
+volumes:
+  postgres_data:

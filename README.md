@@ -1,62 +1,86 @@
 # Team 9 Data Engineering Pipeline
 
 ## Overview
-This project implements an automated ETL pipeline that integrates multiple heterogeneous data sources into a centralized PostgreSQL database. The pipeline combines World Bank economic indicators, EIA energy data, a static food prices dataset, and weather data into a unified analytical structure. The project also includes a Flask API to expose the processed data through queryable endpoints.
+This project implements an end-to-end ETL pipeline that integrates multiple heterogeneous data sources into a centralized PostgreSQL warehouse. The pipeline combines World Bank economic indicators, EIA energy data, World Food Programme food prices, and weather data into a unified analytical dataset keyed by `country_code` and `year_month`.
 
-The automation layer is designed so that the full pipeline can be executed through a single command rather than requiring manual notebook execution.
+The project includes:
+- a full historical backfill pipeline
+- source-level incremental update support
+- a PostgreSQL warehouse
+- a Flask API for querying the processed data
+- Docker Compose for one-command startup
 
----
+## What This Project Does
+The pipeline collects and transforms data from multiple updateable and static sources:
+
+- **World Bank API** for macroeconomic indicators
+- **EIA API** for energy production and consumption data
+- **WFP dataset** for food prices
+- **Weather API** for climate-related variables
+
+These sources are standardized and loaded into PostgreSQL tables, then merged into a final integrated analytical table called `master_data`.
+
+## Key Features
+- One-command Docker startup for peer review
+- Full warehouse backfill from scratch through `master.py`
+- Incremental refresh support for updateable sources
+- Automated WFP food dataset download
+- PostgreSQL schema with primary and foreign keys
+- Flask API endpoints for data access
+- Environment-based configuration through `.env`
 
 ## Project Structure
-
-- `master.py` – Main automation script that runs the full ETL pipeline
-- `world_bank.py` – World Bank API ingestion, transformation, and loading
-- `food_prices.py` – Static food prices CSV ingestion, transformation, and loading
-- `eia_energy.py` – EIA API ingestion, transformation, and loading
-- `weather_backfill.py` – Historical weather ingestion script for 2022–2025
-- `weather_update.py` – Script for recurring weather updates
-- `config.py` – Shared environment-based configuration
-- `app.py` – Flask API for querying the database
-- `requirements.txt` – Python dependencies
-- `.env.example` – Template for required environment variables
-- `wfp_food_prices_master_2023_2025.csv` – Static WFP food prices source file
-
----
+- `master.py` — main orchestration script for full backfill
+- `world_bank.py` — World Bank ingestion and transformation
+- `food_download.py` — downloads the latest WFP food prices file
+- `food_prices.py` — merges historical and latest WFP food data
+- `eia_energy.py` — EIA energy ingestion
+- `weather_backfill.py` — weather ingestion
+- `weather_update.py` — optional weather incremental updater
+- `config.py` — shared configuration
+- `app.py` — Flask API
+- `start.sh` — Docker startup script for backfill and API launch
+- `run_incremental.sh` — incremental refresh runner
+- `Dockerfile` — app container definition
+- `docker-compose.yml` — multi-container setup
+- `requirements.txt` — Python dependencies
+- `.env.example` — environment template
+- `wfp_food_prices_master_2023_2025.csv` — included base food dataset
 
 ## Data Sources
+1. World Bank API — macroeconomic indicators  
+2. EIA API — energy data  
+3. WFP Dataset via HDX — food prices  
+4. Open-Meteo API — weather data  
 
-This project uses at least three datasets from at least three different sources:
-
-1. **World Bank API**  
-   Source of macroeconomic indicators such as GDP, inflation, and population.
-
-2. **EIA API**  
-   Source of international energy production and consumption data.
-
-3. **World Food Programme static dataset**  
-   Static CSV dataset containing food prices.
-
-4. **Weather API**  
-   Historical and updateable weather data used for environmental context.
-
-The datasets are joined using shared keys:
+## Warehouse Join Keys
 - `country_code`
 - `year_month`
 
+## Execution Modes
 
-## Static Source File
+### Backfill mode
+Backfill mode performs a full historical warehouse build from scratch. This is the default startup path and is used for clean initialization.
 
-The food prices dataset is included in the project as:
+### Incremental mode
+Incremental mode supports scheduled or manual refreshes by pulling only the newest available source data window or latest available period, depending on the source.
 
-`wfp_food_prices_master_2023_2025.csv`
+## Requirements
 
-No additional download is required. The automated pipeline reads this file directly during execution.
----
+### For Docker run
+Install:
+- Docker Desktop
+
+### For local Python run
+Install:
+- Python 3.9 or newer
+- PostgreSQL
+- pip
 
 ## Environment Configuration
 
-The project uses environment variables to store database credentials and API keys securely.
+Create a `.env` file in the project root.
 
-### Create the environment file
+### Option 1: copy from template
 ```bash
 cp .env.example .env

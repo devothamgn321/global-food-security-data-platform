@@ -12,16 +12,10 @@ app = Flask(__name__)
 
 
 def get_connection():
-    """
-    Create a database connection using shared environment-based config.
-    """
     return psycopg2.connect(**DB_CONFIG)
 
 
 def fetch_all(query: str):
-    """
-    Run a query and return all rows as dictionaries.
-    """
     conn = get_connection()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -52,7 +46,11 @@ def home():
 
 @app.route("/api/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"})
+    try:
+        rows = fetch_all("SELECT 1 AS status;")
+        return jsonify({"status": "ok", "database": "connected", "check": rows[0]["status"]})
+    except Exception as e:
+        return jsonify({"status": "error", "database": "disconnected", "message": str(e)}), 500
 
 
 @app.route("/api/get_countries", methods=["GET"])
@@ -81,9 +79,8 @@ def get_food_prices():
         SELECT
             country_code,
             year_month,
-            "maize_price_usd_per_kg",
-            "rice_price_usd_per_kg",
-            "wheat_flour_price_usd_per_kg"
+            rice_price_usd_per_kg,
+            wheat_flour_price_usd_per_kg
         FROM food_prices
         ORDER BY country_code, year_month;
     """
@@ -148,5 +145,4 @@ def get_all():
 
 
 if __name__ == "__main__":
-    port = 8001
-    app.run(debug=True, port=port)
+    app.run(host="0.0.0.0", port=8001, debug=False)

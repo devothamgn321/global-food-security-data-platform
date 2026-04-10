@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import os
+from datetime import datetime, timedelta
 from pathlib import Path
+
 import pandas as pd
 import requests
 from sqlalchemy import create_engine
@@ -20,23 +23,45 @@ COUNTRIES = {
     "NGA": {"lat": 6.5244, "lon": 3.3792},      # Lagos
 }
 
-START_DATE = "2022-01-01"
-END_DATE = "2025-12-31"
+
+def get_engine():
+    engine_url = (
+        f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
+        f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+    )
+    return create_engine(engine_url)
 
 
-def fetch_weather_data(country_code: str, lat: float, lon: float) -> pd.DataFrame:
+def get_pipeline_mode() -> str:
+    return os.getenv("PIPELINE_MODE", "backfill").strip().lower()
+
+
+def get_date_range() -> tuple[str, str]:
     """
-    Fetch daily weather data for one country proxy location
-    using the Open-Meteo historical archive API.
+    backfill    -> 2022-01-01 through last completed day
+    incremental -> recent window only, to support scheduled refreshes
     """
+    mode = get_pipeline_mode()
+    today = datetime.today().date()
+    end_date = today - timedelta(days=1)
+
+    if mode == "incremental":
+        start_date = end_date - timedelta(days=40)
+    else:
+        start_date = datetime(2022, 1, 1).date()
+
+    return start_date.isoformat(), end_date.isoformat()
+
+
+def fetch_weather_data(country_code: str, lat: float, lon: float, start_date: str, end_date: str) -> pd.DataFrame:
     if not WEATHER_BASE_URL:
         raise ValueError("Missing WEATHER_BASE_URL in .env")
 
     params = {
         "latitude": lat,
         "longitude": lon,
-        "start_date": START_DATE,
-        "end_date": END_DATE,
+        "start_date": start_date,
+        "end_date": end_date,
         "daily": "temperature_2m_mean,precipitation_sum",
         "timezone": "auto",
     }
@@ -65,9 +90,6 @@ def fetch_weather_data(country_code: str, lat: float, lon: float) -> pd.DataFram
 
 
 def transform_to_monthly(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Convert daily weather data into monthly aggregates.
-    """
     if df.empty:
         return df
 
@@ -97,30 +119,28 @@ def transform_to_monthly(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_to_database(df: pd.DataFrame, table_name: str = "weather") -> None:
-    engine_url = (
-        f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
-        f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
-    )
-
-    engine = create_engine(engine_url)
+    engine = get_engine()
     df.to_sql(table_name, engine, if_exists="replace", index=False)
     print(f"Successfully loaded weather data into '{table_name}'")
 
 
 def run() -> pd.DataFrame:
-    print("Starting weather backfill pipeline...")
+    mode = get_pipeline_mode()
+    start_date, end_date = get_date_range()
+
+    print(f"Starting weather pipeline... mode={mode}, dates={start_date} to {end_date}")
 
     all_data = []
 
     for country_code, coords in COUNTRIES.items():
-        print(f"Fetching historical weather for {country_code}...")
-        df = fetch_weather_data(country_code, coords["lat"], coords["lon"])
+        print(f"Fetching weather for {country_code}...")
+        df = fetch_weather_data(country_code, coords["lat"], coords["lon"], start_date, end_date)
 
         if not df.empty:
             all_data.append(df)
 
     if not all_data:
-        raise RuntimeError("No weather data fetched during backfill.")
+        raise RuntimeError("No weather data fetched.")
 
     daily_df = pd.concat(all_data, ignore_index=True)
     monthly_df = transform_to_monthly(daily_df)

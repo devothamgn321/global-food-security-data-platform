@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 from sqlalchemy import create_engine, text
 
-from config import DB_CONFIG, WEATHER_API_KEY, WEATHER_BASE_URL
+from config import DB_CONFIG, WEATHER_BASE_URL
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -23,10 +23,7 @@ COUNTRIES = {
 
 
 def get_update_window(days_back: int = 90) -> tuple[str, str]:
-    """
-    Quarterly-ish update window. Adjust if your team wants exact quarter logic.
-    """
-    end_date = datetime.today().date()
+    end_date = datetime.today().date() - timedelta(days=1)
     start_date = end_date - timedelta(days=days_back)
     return start_date.isoformat(), end_date.isoformat()
 
@@ -43,9 +40,6 @@ def fetch_weather_data(country_code: str, lat: float, lon: float, start_date: st
         "daily": "temperature_2m_mean,precipitation_sum",
         "timezone": "auto",
     }
-
-    if WEATHER_API_KEY:
-        params["apikey"] = WEATHER_API_KEY
 
     response = requests.get(WEATHER_BASE_URL, params=params, timeout=60)
     response.raise_for_status()
@@ -95,18 +89,32 @@ def transform_to_monthly(df: pd.DataFrame) -> pd.DataFrame:
     return monthly_df
 
 
-def append_to_database(df: pd.DataFrame, table_name: str = "weather") -> None:
-    """
-    Simple append approach. For a stronger version later, add upsert logic.
-    """
+def upsert_to_database(df: pd.DataFrame, table_name: str = "weather") -> None:
     engine_url = (
         f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}"
         f"@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
     )
-
     engine = create_engine(engine_url)
-    df.to_sql(table_name, engine, if_exists="append", index=False)
-    print(f"Successfully appended weather updates into '{table_name}'")
+
+    temp_table = f"{table_name}_staging"
+
+    with engine.begin() as conn:
+        conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
+        df.to_sql(temp_table, conn, if_exists="replace", index=False)
+
+        conn.execute(text(f"""
+            INSERT INTO {table_name} ("Country_Code", "Year_Month", "Avg_Temperature", "Total_Precipitation")
+            SELECT "Country_Code", "Year_Month", "Avg_Temperature", "Total_Precipitation"
+            FROM {temp_table}
+            ON CONFLICT ("Country_Code", "Year_Month")
+            DO UPDATE SET
+                "Avg_Temperature" = EXCLUDED."Avg_Temperature",
+                "Total_Precipitation" = EXCLUDED."Total_Precipitation"
+        """))
+
+        conn.execute(text(f"DROP TABLE IF EXISTS {temp_table}"))
+
+    print(f"Successfully upserted weather updates into '{table_name}'")
 
 
 def run() -> pd.DataFrame:
@@ -133,7 +141,7 @@ def run() -> pd.DataFrame:
     monthly_df.to_csv(OUTPUT_FILE, index=False)
     print(f"Saved: {OUTPUT_FILE.name} {monthly_df.shape}")
 
-    append_to_database(monthly_df, table_name="weather")
+    upsert_to_database(monthly_df, table_name="weather")
 
     return monthly_df
 
