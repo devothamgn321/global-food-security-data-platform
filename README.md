@@ -1,6 +1,8 @@
-# Team 9 Data Engineering Pipeline
+# Global Food Security Data Platform
 
 ## Overview
+Dockerized data platform integrating World Bank, EIA, WFP, and weather data into PostgreSQL with automated ETL, scheduled updates, and a Flask API.
+
 This project implements an end-to-end ETL pipeline that integrates multiple heterogeneous data sources into a centralized PostgreSQL warehouse. The pipeline combines World Bank economic indicators, EIA energy data, World Food Programme food prices, and weather data into a unified analytical dataset keyed by `country_code` and `year_month`.
 
 The project includes:
