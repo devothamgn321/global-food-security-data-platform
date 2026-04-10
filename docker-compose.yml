@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:15
-    container_name: team9_postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: t9pipe
@@ -9,10 +8,11 @@ services:
       POSTGRES_PASSWORD: jhu123
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
 
   app:
     build: .
-    container_name: team9_app
     depends_on:
       - db
     environment:
@@ -25,6 +25,16 @@ services:
       WEATHER_BASE_URL: ${WEATHER_BASE_URL}
     ports:
       - "8001:8001"
+
+  api_test:
+    build: .
+    depends_on:
+      - app
+    environment:
+      API_BASE_URL: http://app:8001
+    command: [ "python3", "api_smoke_test.py" ]
+    profiles:
+      - test
 
 volumes:
   postgres_data:

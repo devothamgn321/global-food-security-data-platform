@@ -2,6 +2,7 @@
 # coding: utf-8
 
 from pathlib import Path
+from datetime import datetime
 
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -92,6 +93,22 @@ def create_countries_table(engine) -> pd.DataFrame:
     df_countries.to_sql("countries", con=engine, if_exists="replace", index=False)
     print(f"Created table 'countries': {df_countries.shape}")
     return df_countries
+
+def create_date_dimension(engine) -> None:
+    print("Creating datedim table...")
+    current_year = datetime.now().year
+    dates = pd.date_range(start="2022-01-01", end=f"{current_year + 10}-12-01", freq="MS")
+    df_date = pd.DataFrame({"date": dates})
+    
+    df_date["year_month"] = df_date["date"].dt.strftime("%Y-%m")
+    df_date["year_int"] = df_date["date"].dt.year
+    df_date["month_int"] = df_date["date"].dt.month
+    df_date["month_name"] = df_date["date"].dt.month_name()
+    df_date["quarter"] = "Q" + df_date["date"].dt.quarter.astype(str)
+    
+    df_date = df_date.drop(columns=["date"])
+    df_date.to_sql("datedim", con=engine, if_exists="replace", index=False)
+    print(f"Created table 'datedim' extending to {current_year + 10}.")
 
 
 def load_csv_table(engine, file_path: Path, table_name: str) -> pd.DataFrame:
@@ -211,6 +228,7 @@ def run() -> None:
 
         drop_existing_tables(engine)
         create_countries_table(engine)
+        create_date_dimension(engine)
         dataframes = load_individual_tables(engine)
         create_master_table(engine, dataframes)
 
